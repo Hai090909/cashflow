@@ -120,8 +120,11 @@ function limited(key, max, windowMs) {
     return h.n > max;
 }
 const clearLimit = key => hits.delete(key);
-setInterval(() => { const now = Date.now(); for (const [k, h] of hits)
-        if (h.until < now) hits.delete(k); }, 60000).unref();
+setInterval(() => {
+    const now = Date.now();
+    for (const [k, h] of hits)
+        if (h.until < now) hits.delete(k);
+}, 60000).unref();
 
 const userPub = u => ({ id: u.id, name: u.name, phone: u.phone, role: u.role, active: !!u.active, pending: !!u.pending, muted: !!u.muted, chatStatus: u.chat_status || 'open', avatar: u.avatar || '', created: u.created, lastLogin: u.last_login || null });
 const roleRow = name => db.prepare('SELECT * FROM roles WHERE name = ?').get(name);
@@ -176,7 +179,9 @@ function getState() {
     }
     const files = {};
     for (const f of db.prepare('SELECT id, tx_id, name, type, size FROM files WHERE tx_id IS NOT NULL ORDER BY created, rowid').all()) {
-        (files[f.tx_id] || = []).push({ id: f.id, name: f.name, type: f.type, size: f.size });
+        // GOOD (Fixed):
+        files[f.tx_id] = files[f.tx_id] || [];
+        files[f.tx_id].push({ id: f.id, name: f.name, type: f.type, size: f.size });
     }
     return {
         settings,
@@ -294,8 +299,10 @@ function faqMatch(text) {
         // a word the admin listed as a keyword is enough on its own; otherwise two shared words are needed
         if (k < 1 && n < Math.min(2, ft.size)) continue;
         const score = n + 2 * k + n / Math.sqrt(ft.size || 1);
-        if (score > bestScore) { best = f;
-            bestScore = score; }
+        if (score > bestScore) {
+            best = f;
+            bestScore = score;
+        }
     }
     return best;
 }
@@ -343,8 +350,10 @@ function readBody(req, limit) {
         let size = 0;
         req.on('data', c => {
             size += c.length;
-            if (size > limit) { reject(httpError(413, 'Payload too large'));
-                req.destroy(); } else chunks.push(c);
+            if (size > limit) {
+                reject(httpError(413, 'Payload too large'));
+                req.destroy();
+            } else chunks.push(c);
         });
         req.on('end', () => resolve(Buffer.concat(chunks)));
         req.on('error', reject);
@@ -425,8 +434,10 @@ const server = http.createServer(async(req, res) => {
         res.end(data);
     };
     const json = (obj, code = 200) => send(code, JSON.stringify(obj));
-    const redirect = to => { res.writeHead(302, { location: to, 'cache-control': 'no-store' });
-        res.end(); };
+    const redirect = to => {
+        res.writeHead(302, { location: to, 'cache-control': 'no-store' });
+        res.end();
+    };
     try {
         // when only this computer is served, refuse other hostnames (DNS rebinding); always refuse requests from other sites
         if (LOOPBACK && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '')) return json({ error: 'forbidden host' }, 403);
@@ -537,8 +548,11 @@ const server = http.createServer(async(req, res) => {
         /* ---- finance data ---- */
         if (p === '/api/state') {
             if (method === 'GET') { need(a, 'dashboard.view'); return json(getState() || { empty: true }); }
-            if (method === 'PUT') { need(a, 'dashboard.edit');
-                saveState(await readJson(req, MAX_JSON)); return json({ ok: true }); }
+            if (method === 'PUT') {
+                need(a, 'dashboard.edit');
+                saveState(await readJson(req, MAX_JSON));
+                return json({ ok: true });
+            }
         }
         if (p === '/api/chat' && method === 'POST') {
             need(a, 'dashboard.view');
@@ -546,8 +560,11 @@ const server = http.createServer(async(req, res) => {
             const b = await readJson(req, 100 * 1024);
             return json({ reply: await callClaude(ADMIN_AI_SYSTEM + str(b.context, 12000), b.messages) });
         }
-        if (p === '/api/files' && method === 'DELETE') { need(a, 'dashboard.edit');
-            db.exec('DELETE FROM files'); return json({ ok: true }); }
+        if (p === '/api/files' && method === 'DELETE') {
+            need(a, 'dashboard.edit');
+            db.exec('DELETE FROM files');
+            return json({ ok: true });
+        }
         if ((m = p.match(/^\/api\/files\/([\w-]{1,60})$/))) {
             const id = m[1];
             if (method === 'PUT') {
@@ -564,8 +581,11 @@ const server = http.createServer(async(req, res) => {
                 if (!f) return json({ error: 'not found' }, 404);
                 return send(200, Buffer.from(f.data), SAFE_TYPES.test(f.type) ? f.type : 'application/octet-stream', { 'content-security-policy': 'sandbox' });
             }
-            if (method === 'DELETE') { need(a, 'dashboard.edit');
-                db.prepare('DELETE FROM files WHERE id = ?').run(id); return json({ ok: true }); }
+            if (method === 'DELETE') {
+                need(a, 'dashboard.edit');
+                db.prepare('DELETE FROM files WHERE id = ?').run(id);
+                return json({ ok: true });
+            }
         }
 
         /* ---- user & role management (admin only) ---- */
@@ -607,8 +627,10 @@ const server = http.createServer(async(req, res) => {
                 try {
                     if (action === 'role') changeRole(a, target, str(b.role, 30));
                     else if (action === 'enable' || action === 'approve') setActive(a, target, true);
-                    else if (action === 'disable') { if (id === uid) throw httpError(400, 'You cannot disable your own account');
-                        setActive(a, target, false); } else if (action === 'signout') signOutUser(a, target);
+                    else if (action === 'disable') {
+                        if (id === uid) throw httpError(400, 'You cannot disable your own account');
+                        setActive(a, target, false);
+                    } else if (action === 'signout') signOutUser(a, target);
                     else removeUser(a, target);
                     done.push(id);
                 } catch (e) {
@@ -632,15 +654,22 @@ const server = http.createServer(async(req, res) => {
             if (method === 'PATCH') {
                 const b = await readJson(req);
                 if (b.role !== undefined) changeRole(a, fresh(), str(b.role, 30));
-                if (b.name !== undefined) { const n = cleanName(b.name); if (n !== target.name) { db.prepare('UPDATE users SET name = ? WHERE id = ?').run(n, id);
-                        audit(a, 'user.edit', target, `name → ${n}`); } }
+                if (b.name !== undefined) {
+                    const n = cleanName(b.name);
+                    if (n !== target.name) {
+                        db.prepare('UPDATE users SET name = ? WHERE id = ?').run(n, id);
+                        audit(a, 'user.edit', target, `name → ${n}`);
+                    }
+                }
                 if (b.phone !== undefined) {
                     const phone = normPhone(b.phone);
                     if (!phone) throw httpError(400, 'Enter a valid phone number: 8 to 15 digits, optionally starting with +.', 'phone');
                     const other = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
                     if (other && other.id !== id) throw httpError(409, 'That phone number is already registered. Try signing in instead.', 'phone');
-                    if (phone !== target.phone) { db.prepare('UPDATE users SET phone = ? WHERE id = ?').run(phone, id);
-                        audit(a, 'user.edit', target, `phone ${target.phone} → ${phone}`); }
+                    if (phone !== target.phone) {
+                        db.prepare('UPDATE users SET phone = ? WHERE id = ?').run(phone, id);
+                        audit(a, 'user.edit', target, `phone ${target.phone} → ${phone}`);
+                    }
                 }
                 if (b.active !== undefined) setActive(a, fresh(), !!b.active);
                 if (b.pending === false && fresh().pending) setActive(a, fresh(), true);
@@ -825,8 +854,10 @@ const server = http.createServer(async(req, res) => {
                 db.prepare('SELECT id FROM users WHERE active = 1 AND role = ? AND id != ?').all(audience, uid);
             const ins = db.prepare("INSERT INTO messages (user_id, channel, sender, sender_id, body, created) VALUES (?, 'admin', 'admin', ?, ?, ?)");
             db.exec('BEGIN');
-            try { for (const t of targets) ins.run(t.id, uid, body, Date.now());
-                db.exec('COMMIT'); } catch (e) { db.exec('ROLLBACK'); throw e; }
+            try {
+                for (const t of targets) ins.run(t.id, uid, body, Date.now());
+                db.exec('COMMIT');
+            } catch (e) { db.exec('ROLLBACK'); throw e; }
             audit(a, 'chat.broadcast', null, `to ${targets.length} ${audience === 'all' ? 'people' : audience}: ${body.slice(0, 80)}`);
             return json({ sent: targets.length });
         }

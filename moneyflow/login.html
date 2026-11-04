@@ -88,7 +88,7 @@
     <h1 id="title">Welcome back</h1>
     <p class="sub" id="sub">Sign in with your phone number and password.</p>
 
-    <div class="note hidden" id="firstNote"><b>Welcome! You are the first one here.</b><br>The account you create now becomes the <b>admin</b>. Everyone who registers after you starts as a customer, and you can change their role later.</div>
+    <div class="note hidden" id="firstNote"><b>Welcome! You are the first one here.</b><br>The account you create now becomes the <b>admin</b>. Everyone who registers after you starts as a customer, and you can change their role later. <span id="setupKeyHint" class="hidden">Enter the admin setup key provided by the person who deployed this app.</span></div>
 
     <div class="note hidden" id="rulesNote"></div>
 
@@ -118,6 +118,10 @@
         <div class="field"><input id="confirm" type="password" autocomplete="new-password" placeholder="Type it again" aria-describedby="e-confirm"></div>
         <div class="ferr" id="e-confirm"></div>
       </label>
+      <label class="row hidden" id="adminSetupWrap">Admin setup key
+        <div class="field"><input id="adminSetupKey" type="password" autocomplete="off" placeholder="Provided by the app owner"></div>
+        <div class="hint">Only needed to create the first admin account.</div>
+      </label>
       <button class="submit" id="go" type="submit">Sign in</button>
     </form>
     <p class="foot" id="foot">New here? <a id="swap">Create an account</a></p>
@@ -129,7 +133,7 @@ const $ = id => document.getElementById(id);
 const FIELDS = ['name', 'phone', 'password', 'confirm'];
 const LABEL = { name: 'Name', phone: 'Phone number', password: 'Password', confirm: 'Confirm password' };
 let mode = 'login', busy = false;
-const rules = { hasUsers: false, open: true, approval: false }; // what the admin allows, learned from the server
+const rules = { hasUsers: false, open: true, approval: false, setupKeyRequired: false }; // what the admin allows, learned from the server
 
 /* ---------- checking what was typed ---------- */
 function checkPhone(raw) {
@@ -211,6 +215,8 @@ function setMode(m) {
 function applyRules() {
   const closed = rules.hasUsers && !rules.open;
   $('tabs').classList.toggle('hidden', closed); $('foot').classList.toggle('hidden', closed);
+  $('adminSetupWrap').classList.toggle('hidden', rules.hasUsers || !rules.setupKeyRequired || mode !== 'register');
+  $('setupKeyHint').classList.toggle('hidden', !rules.setupKeyRequired);
   const note = closed ? '<b>New sign-ups are turned off.</b> If you need an account, ask the store admin to create one for you.'
     : rules.approval && rules.hasUsers && mode === 'register' ? '<b>Heads up:</b> the admin has to approve new accounts before you can sign in.' : '';
   $('rulesNote').innerHTML = note; $('rulesNote').classList.toggle('hidden', !note);
@@ -234,7 +240,7 @@ $('form').onsubmit = async e => {
   if (busy || !validate()) return;
   busy = true; $('go').disabled = true; $('go').textContent = mode === 'register' ? 'Creating…' : 'Signing in…';
   try {
-    const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('name').value.trim(), phone: $('phone').value.trim(), password: $('password').value }) });
+    const r = await fetch('/api/auth/' + mode, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: $('name').value.trim(), phone: $('phone').value.trim(), password: $('password').value, adminSetupKey: $('adminSetupKey').value }) });
     const text = await r.text();
     let j = null; try { j = JSON.parse(text); } catch (_) { /* not JSON */ }
     if (r.status === 202 && j && j.pending) { const p = $('phone').value; setMode('login'); $('phone').value = p; showOk(j.message || 'Your account was created. The admin needs to approve it before you can sign in.'); return; }
@@ -243,6 +249,7 @@ $('form').onsubmit = async e => {
     const f = j.field, msg = j.error || 'The server refused the request.';
     if (f === 'login') { mark('phone', ' '); mark('password', msg); $('e-phone').classList.remove('show'); summary('Could not sign in', [esc(msg), 'Check the number and the password. Passwords are case-sensitive.']); $('password').select(); }
     else if (FIELDS.includes(f)) { mark(f, msg); summary('Please fix this', [`<b style="display:inline">${LABEL[f]}:</b> ${esc(msg)}`]); $(f).focus(); }
+    else if (f === 'adminSetupKey') { summary('Please check the admin setup key', [esc(msg)]); $('adminSetupKey').focus(); }
     else summary(r.status === 429 ? 'Too many attempts' : 'Could not continue', [esc(msg)]);
   } catch (err) {
     summary(`Cannot reach the server at ${esc(location.origin)}`, ['Your browser could not connect.'], START);
@@ -255,7 +262,7 @@ $('form').onsubmit = async e => {
 fetch('/api/auth/status').then(async r => {
   let s = null; try { s = await r.json(); } catch (_) { /* not JSON */ }
   if (!r.ok || !s || typeof s.hasUsers !== 'boolean') return wrongServer(r.status);
-  Object.assign(rules, { hasUsers: s.hasUsers, open: s.open !== false, approval: !!s.approval });
+  Object.assign(rules, { hasUsers: s.hasUsers, open: s.open !== false, approval: !!s.approval, setupKeyRequired: !!s.setupKeyRequired });
   if (!s.hasUsers) { $('firstNote').classList.remove('hidden'); setMode('register'); }
   else if (!rules.open && mode === 'register') setMode('login');
   applyRules();

@@ -442,8 +442,12 @@ const server = http.createServer(async(req, res) => {
         res.end();
     };
     try {
-        // when only this computer is served, refuse other hostnames (DNS rebinding); always refuse requests from other sites
-        if (LOOPBACK && !/^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(req.headers.host || '')) return json({ error: 'forbidden host' }, 403);
+        // Allow localhost, 127.0.0.1, and Render hostnames (*.onrender.com)
+        const currentHost = req.headers.host || '';
+        const isAllowedHost = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(currentHost) || currentHost.includes('onrender.com');
+
+        if (LOOPBACK && !isAllowedHost) return json({ error: 'forbidden host' }, 403);
+
         if (req.headers.origin) {
             let same = false;
             try { same = new URL(req.headers.origin).host === req.headers.host; } catch (_) { /* e.g. Origin: null */ }

@@ -1,3 +1,6 @@
+const express = require('express');
+const app = express();
+
 // MoneyFlow local server: serves the app, handles accounts and keeps all data in a SQLite file (moneyflow.db).
 // Run with:  node server.js      (needs Node 22.5 or newer, no packages to install)
 //
@@ -927,11 +930,9 @@ const server = http.createServer(async(req, res) => {
     }
 });
 
-server.listen(PORT, HOST, () => {
-    console.log(`MoneyFlow is running at http://localhost:${PORT}  (listening on ${HOST})`);
+server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+    console.log(`MoneyFlow is running on port ${process.env.PORT || 3000}`);
     console.log(`Data is stored in ${DB_FILE}`);
-    console.log(db.prepare('SELECT COUNT(*) n FROM users').get().n ? 'Sign in at /login' : 'No accounts yet: the first person to register at /login becomes the admin.');
-    if (!LOOPBACK) console.log('Reachable from other devices on your network. Use HTTPS (and SECURE_COOKIES=1) before exposing it beyond a trusted network.');
 });
 
 module.exports = app;
